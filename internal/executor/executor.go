@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
+	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -134,11 +137,15 @@ func (e *Executor) executeJob(job *storage.Job) {
 	job.StartedAt = &now
 	e.storage.Save(job)
 
+	e.logJobStart(job)
+
 	e.runCommand(ctx, job)
 
 	completedAt := time.Now()
 	job.CompletedAt = &completedAt
 	job.DurationMs = completedAt.Sub(*job.StartedAt).Milliseconds()
+
+	e.logJobCompletion(job)
 
 	e.storage.Save(job)
 }
@@ -258,5 +265,61 @@ func (e *Executor) Shutdown(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 		}
+	}
+}
+
+func (e *Executor) logJobStart(job *storage.Job) {
+	pwd := job.WorkingDir
+	if pwd == "" {
+		if cwd, err := os.Getwd(); err == nil {
+			pwd = cwd
+		} else {
+			pwd = "/"
+		}
+	}
+
+	cmdStr := job.Command
+	if len(job.Args) > 0 {
+		cmdStr = fmt.Sprintf("%s %s", job.Command, strings.Join(job.Args, " "))
+	}
+
+	envStr := ""
+	if len(job.Env) > 0 {
+		envVars := make([]string, 0, len(job.Env))
+		for k, v := range job.Env {
+			envVars = append(envVars, fmt.Sprintf("%s=%s", k, v))
+		}
+		envStr = fmt.Sprintf(" ENV=%s ;", strings.Join(envVars, ","))
+	}
+
+	log.Printf("sct-agent[%s]: PWD=%s ;%s COMMAND=%s",
+		job.ID[:8], pwd, envStr, cmdStr)
+}
+
+func (e *Executor) logJobCompletion(job *storage.Job) {
+	exitCode := -1
+	if job.ExitCode != nil {
+		exitCode = *job.ExitCode
+	}
+
+	cmdStr := job.Command
+	if len(job.Args) > 0 {
+		cmdStr = fmt.Sprintf("%s %s", job.Command, strings.Join(job.Args, " "))
+	}
+
+	switch job.Status {
+	case storage.StatusCompleted:
+		log.Printf("sct-agent[%s]: Command completed successfully: exit_code=%d duration=%dms cmd=%s",
+			job.ID[:8], exitCode, job.DurationMs, cmdStr)
+	case storage.StatusFailed:
+		stderrPreview := job.Stderr
+		if len(stderrPreview) > 200 {
+			stderrPreview = stderrPreview[:200] + "... (truncated)"
+		}
+		log.Printf("sct-agent[%s]: Command failed: exit_code=%d duration=%dms error=%s stderr=%q cmd=%s",
+			job.ID[:8], exitCode, job.DurationMs, job.Error, stderrPreview, cmdStr)
+	case storage.StatusCancelled:
+		log.Printf("sct-agent[%s]: Command cancelled: duration=%dms cmd=%s",
+			job.ID[:8], job.DurationMs, cmdStr)
 	}
 }
