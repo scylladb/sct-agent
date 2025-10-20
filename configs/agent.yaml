@@ -1,0 +1,20 @@
+server:
+  host: "0.0.0.0"
+  port: 15000
+
+security:
+  api_keys:
+    - "sct-runner-key-1"
+    - "sct-runner-key-2"
+    - "test-api-key-12345"
+
+executor:
+  max_concurrent_jobs: 10
+  default_timeout_seconds: 1800
+
+logging:
+  level: "info"
+  
+storage:
+  type: "memory"
+  cleanup_interval_hours: 24

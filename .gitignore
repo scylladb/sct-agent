@@ -1,0 +1,6 @@
+sct-agent
+.vscode/
+.idea/
+bin/
+dist/
+build/
