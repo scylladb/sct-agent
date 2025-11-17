@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -104,6 +105,12 @@ func loadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
+	// load API key from environment variable if set
+	if apiKey := os.Getenv("SCT_AGENT_API_KEY"); apiKey != "" {
+		log.Println("Loading API key from SCT_AGENT_API_KEY environment variable")
+		config.Security.APIKeys = append(config.Security.APIKeys, apiKey)
+	}
+
 	if err = validateConfig(config); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
@@ -131,11 +138,49 @@ func validateConfig(config *Config) error {
 	return nil
 }
 
+func configureSlog(level string, logFilePath string) {
+	logLevels := map[string]slog.Level{
+		"debug": slog.LevelDebug,
+		"info":  slog.LevelInfo,
+		"warn":  slog.LevelWarn,
+		"error": slog.LevelError,
+	}
+
+	logLevel, exists := logLevels[level]
+	if !exists {
+		logLevel = slog.LevelInfo
+	}
+
+	var writer *os.File
+	if logFilePath == "" {
+		// no log file specified, use stdout
+		writer = os.Stdout
+	} else {
+		// log to file to avoid overwhelming systemd-journald
+		logFile, err := os.OpenFile(logFilePath,
+			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			// fallback to stdout if file cannot be opened
+			log.Printf("Warning: failed to open log file %s, using stdout: %v", logFilePath, err)
+			writer = os.Stdout
+		} else {
+			writer = logFile
+		}
+	}
+
+	logger := slog.New(slog.NewTextHandler(writer, &slog.HandlerOptions{
+		Level: logLevel,
+	}))
+	slog.SetDefault(logger)
+}
+
 const version = "0.0.1"
 
 func main() {
 	var configPath string
+	var logFilePath string
 	flag.StringVar(&configPath, "config", "configs/agent.yaml", "Path to configuration file")
+	flag.StringVar(&logFilePath, "log-file", "", "Path to log file (empty = stdout)")
 	flag.Parse()
 
 	config, err := loadConfig(configPath)
@@ -143,18 +188,21 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	log.Printf("Starting SCT Agent v%s", version)
-	log.Printf("Server will listen on %s:%d", config.Server.Host, config.Server.Port)
-	log.Printf("Max concurrent jobs: %d", config.Executor.MaxConcurrentJobs)
-	log.Printf("Default timeout: %d seconds", config.Executor.DefaultTimeoutSeconds)
+	configureSlog(config.Logging.Level, logFilePath)
+
+	slog.Info("Starting SCT Agent", "version", version)
+	slog.Info("Server configuration", "host", config.Server.Host, "port", config.Server.Port)
+	slog.Info("Executor configuration", "max_concurrent_jobs", config.Executor.MaxConcurrentJobs, "default_timeout_seconds", config.Executor.DefaultTimeoutSeconds)
+	slog.Info("Logging configuration", "level", config.Logging.Level)
 
 	var store storage.Storage
 	switch config.Storage.Type {
 	case "memory":
 		store = storage.NewMemory()
-		log.Println("Using in-memory storage")
+		slog.Info("Storage initialized", "type", "memory")
 	default:
-		log.Fatalf("Unsupported storage type: %s", config.Storage.Type)
+		slog.Error("Unsupported storage type", "type", config.Storage.Type)
+		os.Exit(1)
 	}
 
 	exec := executor.NewExecutor(config.Executor.MaxConcurrentJobs, store)
@@ -169,9 +217,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("SCT Agent listening on %s", httpServer.Addr)
+		slog.Info("SCT Agent listening", "addr", httpServer.Addr)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("Failed to start server: %v", err)
+			slog.Error("Failed to start server", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -180,17 +229,17 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutting down SCT Agent...")
+	slog.Info("Shutting down SCT Agent...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := exec.Shutdown(ctx); err != nil {
-		log.Printf("Executor shutdown error: %v", err)
+		slog.Error("Executor shutdown error", "error", err)
 	}
 	if err := httpServer.Shutdown(ctx); err != nil {
-		log.Printf("HTTP server shutdown error: %v", err)
+		slog.Error("HTTP server shutdown error", "error", err)
 	}
 
-	log.Println("SCT Agent stopped")
+	slog.Info("SCT Agent stopped")
 }

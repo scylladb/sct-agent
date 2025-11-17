@@ -48,6 +48,8 @@ curl -H "Authorization: Bearer sct-runner-key-1" \
 
 ## Configuration
 
+### Configuration File
+
 Edit `configs/agent.yaml` to customize:
 
 ```yaml
@@ -57,13 +59,24 @@ server:
 
 security:
   api_keys:
-    - "sct-runner-key-1" 
+    - "sct-runner-key-1"
     - "sct-runner-key-2"
 
 executor:
   max_concurrent_jobs: 10
   default_timeout_seconds: 1800
 ```
+
+### Environment Variables
+
+API key can be also provided via environment variable:
+
+```bash
+export SCT_AGENT_API_KEY="secure-api-key"
+./sct-agent --config configs/agent.yaml
+```
+
+**Note:** API keys from environment variables are added to the list of valid keys from the configuration file.
 
 ## API Endpoints
 
