@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -292,8 +292,11 @@ func (e *Executor) logJobStart(job *storage.Job) {
 		envStr = fmt.Sprintf(" ENV=%s ;", strings.Join(envVars, ","))
 	}
 
-	log.Printf("sct-agent[%s]: PWD=%s ;%s COMMAND=%s",
-		job.ID[:8], pwd, envStr, cmdStr)
+	slog.Debug("Job started",
+		"job_id", job.ID[:8],
+		"pwd", pwd,
+		"env", envStr,
+		"command", cmdStr)
 }
 
 func (e *Executor) logJobCompletion(job *storage.Job) {
@@ -309,17 +312,27 @@ func (e *Executor) logJobCompletion(job *storage.Job) {
 
 	switch job.Status {
 	case storage.StatusCompleted:
-		log.Printf("sct-agent[%s]: Command completed successfully: exit_code=%d duration=%dms cmd=%s",
-			job.ID[:8], exitCode, job.DurationMs, cmdStr)
+		slog.Info("Command completed",
+			"job_id", job.ID[:8],
+			"exit_code", exitCode,
+			"duration_ms", job.DurationMs,
+			"command", cmdStr)
 	case storage.StatusFailed:
 		stderrPreview := job.Stderr
 		if len(stderrPreview) > 200 {
 			stderrPreview = stderrPreview[:200] + "... (truncated)"
 		}
-		log.Printf("sct-agent[%s]: Command failed: exit_code=%d duration=%dms error=%s stderr=%q cmd=%s",
-			job.ID[:8], exitCode, job.DurationMs, job.Error, stderrPreview, cmdStr)
+		slog.Info("Command failed",
+			"job_id", job.ID[:8],
+			"exit_code", exitCode,
+			"duration_ms", job.DurationMs,
+			"error", job.Error,
+			"stderr", stderrPreview,
+			"command", cmdStr)
 	case storage.StatusCancelled:
-		log.Printf("sct-agent[%s]: Command cancelled: duration=%dms cmd=%s",
-			job.ID[:8], job.DurationMs, cmdStr)
+		slog.Info("Command cancelled",
+			"job_id", job.ID[:8],
+			"duration_ms", job.DurationMs,
+			"command", cmdStr)
 	}
 }

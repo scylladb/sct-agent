@@ -1,9 +1,10 @@
 package api
 
 import (
-	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -62,14 +63,17 @@ func AuthMiddleware(apiKeys []string) gin.HandlerFunc {
 
 // LoggingMiddleware provides request logging middleware
 func LoggingMiddleware() gin.HandlerFunc {
-	return gin.LoggerWithFormatter(func(p gin.LogFormatterParams) string {
-		return fmt.Sprintf("[%s] %s %s %d %s %s\n",
-			p.TimeStamp.Format("2006-01-02 15:04:05"),
-			p.Method,
-			p.Path,
-			p.StatusCode,
-			p.Latency,
-			p.ClientIP,
+	return func(c *gin.Context) {
+		start := time.Now()
+
+		c.Next()
+
+		slog.Debug("HTTP request",
+			"method", c.Request.Method,
+			"path", c.Request.URL.Path,
+			"status", c.Writer.Status(),
+			"latency", time.Since(start),
+			"client_ip", c.ClientIP(),
 		)
-	})
+	}
 }
