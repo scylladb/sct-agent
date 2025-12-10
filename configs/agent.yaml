@@ -1,6 +1,6 @@
 server:
   host: "0.0.0.0"
-  port: 15000
+  port: 16000
 
 security:
   api_keys:

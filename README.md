@@ -30,20 +30,20 @@ go build -o sct-agent ./cmd/agent
 ./sct-agent --config configs/agent.yaml
 ```
 
-The agent will start on `http://localhost:15000` by default.
+The agent will start on `http://localhost:16000` by default.
 
 ### 3. Test with curl
 
 ```bash
 # execute a command
-curl -X POST http://localhost:15000/api/v1/commands \
+curl -X POST http://localhost:16000/api/v1/commands \
   -H "Authorization: Bearer sct-runner-key-1" \
   -H "Content-Type: application/json" \
   -d '{"command": "echo", "args": ["Hello", "World"]}'
 
 # check job status
 curl -H "Authorization: Bearer sct-runner-key-1" \
-  http://localhost:15000/api/v1/commands/{JOB_ID}
+  http://localhost:16000/api/v1/commands/{JOB_ID}
 ```
 
 ## Configuration
@@ -55,7 +55,7 @@ Edit `configs/agent.yaml` to customize:
 ```yaml
 server:
   host: "0.0.0.0"
-  port: 15000
+  port: 16000
 
 security:
   api_keys:
