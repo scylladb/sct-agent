@@ -52,7 +52,7 @@ func getDefaultConfig() *Config {
 			Port int    `yaml:"port"`
 		}{
 			Host: "0.0.0.0",
-			Port: 15000,
+			Port: 16000,
 		},
 
 		Security: struct {
