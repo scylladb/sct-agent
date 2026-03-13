@@ -3,11 +3,14 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"time"
 
@@ -28,6 +31,31 @@ func NewClient(baseURL, apiKey string) *Client {
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+func NewClientWithTLS(baseURL, apiKey, caCertFile string) (*Client, error) {
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+
+	if caCertFile != "" {
+		caCert, err := os.ReadFile(caCertFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA certificate file: %w", err)
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse CA certificate from %s", caCertFile)
+		}
+		tlsConfig.RootCAs = caCertPool
+	}
+
+	return &Client{
+		baseURL: baseURL,
+		apiKey:  apiKey,
+		httpClient: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: &http.Transport{TLSClientConfig: tlsConfig},
+		},
+	}, nil
 }
 
 func (c *Client) ExecuteCommand(ctx context.Context, req *storage.ExecuteRequest) (*storage.ExecuteResponse, error) {

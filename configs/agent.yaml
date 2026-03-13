@@ -7,6 +7,10 @@ security:
     - "sct-runner-key-1"
     - "sct-runner-key-2"
     - "test-api-key-12345"
+  tls:
+    enabled: false
+    cert_file: "/etc/sct-agent/certs/server.crt"
+    key_file: "/etc/sct-agent/certs/server.key"
 
 executor:
   max_concurrent_jobs: 10
