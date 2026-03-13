@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -28,6 +29,11 @@ type Config struct {
 
 	Security struct {
 		APIKeys []string `yaml:"api_keys"`
+		TLS     struct {
+			Enabled  bool   `yaml:"enabled"`
+			CertFile string `yaml:"cert_file"`
+			KeyFile  string `yaml:"key_file"`
+		} `yaml:"tls"`
 	} `yaml:"security"`
 
 	Executor struct {
@@ -57,6 +63,11 @@ func getDefaultConfig() *Config {
 
 		Security: struct {
 			APIKeys []string `yaml:"api_keys"`
+			TLS     struct {
+				Enabled  bool   `yaml:"enabled"`
+				CertFile string `yaml:"cert_file"`
+				KeyFile  string `yaml:"key_file"`
+			} `yaml:"tls"`
 		}{
 			APIKeys: []string{"default-api-key"},
 		},
@@ -135,6 +146,15 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("default_timeout_seconds must be greater than 0")
 	}
 
+	if config.Security.TLS.Enabled {
+		if config.Security.TLS.CertFile == "" {
+			return fmt.Errorf("security.tls.cert_file is required when TLS is enabled")
+		}
+		if config.Security.TLS.KeyFile == "" {
+			return fmt.Errorf("security.tls.key_file is required when TLS is enabled")
+		}
+	}
+
 	return nil
 }
 
@@ -172,6 +192,24 @@ func configureSlog(level string, logFilePath string) {
 		Level: logLevel,
 	}))
 	slog.SetDefault(logger)
+}
+
+func loadTLSConfig(config *Config) (*tls.Config, error) {
+	tlsCfg := config.Security.TLS
+
+	if !tlsCfg.Enabled {
+		return nil, nil
+	}
+
+	cert, err := tls.LoadX509KeyPair(tlsCfg.CertFile, tlsCfg.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load TLS certificate: %w", err)
+	}
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}, nil
 }
 
 const version = "0.0.1"
@@ -216,10 +254,27 @@ func main() {
 		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
 
+	tlsConfig, err := loadTLSConfig(config)
+	if err != nil {
+		slog.Error("Failed to load TLS configuration", "error", err)
+		os.Exit(1)
+	}
+
+	if tlsConfig != nil {
+		httpServer.TLSConfig = tlsConfig
+	}
+
 	go func() {
-		slog.Info("SCT Agent listening", "addr", httpServer.Addr)
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("Failed to start server", "error", err)
+		var serveErr error
+		if tlsConfig != nil {
+			slog.Info("SCT Agent listening with TLS", "addr", httpServer.Addr)
+			serveErr = httpServer.ListenAndServeTLS("", "")
+		} else {
+			slog.Info("SCT Agent listening", "addr", httpServer.Addr)
+			serveErr = httpServer.ListenAndServe()
+		}
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			slog.Error("Failed to start server", "error", serveErr)
 			os.Exit(1)
 		}
 	}()
