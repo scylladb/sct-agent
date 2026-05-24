@@ -178,3 +178,11 @@ func generateTestCert(t *testing.T) (certFile, keyFile string) {
 
 	return certPath, keyPath
 }
+
+func TestFormatVersion(t *testing.T) {
+	got := formatVersion("v1.2.3", "abc1234", "2026-05-24T12:00:00Z")
+	want := "sct-agent v1.2.3 (commit abc1234, built 2026-05-24T12:00:00Z)\n"
+	if got != want {
+		t.Fatalf("formatVersion mismatch:\ngot:  %q\nwant: %q", got, want)
+	}
+}

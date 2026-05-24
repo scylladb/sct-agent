@@ -103,7 +103,7 @@ func loadConfig(configPath string) (*Config, error) {
 		return config, nil
 	}
 
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(configPath) //nolint:gosec // G304: configPath is operator-supplied via --config
 	if err != nil {
 		if os.IsNotExist(err) {
 			log.Printf("Config file %s not found, using defaults", configPath)
@@ -177,8 +177,8 @@ func configureSlog(level string, logFilePath string) {
 		writer = os.Stdout
 	} else {
 		// log to file to avoid overwhelming systemd-journald
-		logFile, err := os.OpenFile(logFilePath,
-			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		logFile, err := os.OpenFile(logFilePath, //nolint:gosec // G304: logFilePath is operator-supplied via --log-file
+			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 		if err != nil {
 			// fallback to stdout if file cannot be opened
 			log.Printf("Warning: failed to open log file %s, using stdout: %v", logFilePath, err)
@@ -212,14 +212,31 @@ func loadTLSConfig(config *Config) (*tls.Config, error) {
 	}, nil
 }
 
-const version = "0.0.1"
+var (
+	version   = "dev"
+	commit    = "unknown"
+	buildDate = "unknown"
+)
+
+func formatVersion(version, commit, buildDate string) string {
+	return fmt.Sprintf("sct-agent %s (commit %s, built %s)\n", version, commit, buildDate)
+}
 
 func main() {
-	var configPath string
-	var logFilePath string
+	var (
+		configPath  string
+		logFilePath string
+		showVersion bool
+	)
 	flag.StringVar(&configPath, "config", "configs/agent.yaml", "Path to configuration file")
 	flag.StringVar(&logFilePath, "log-file", "", "Path to log file (empty = stdout)")
+	flag.BoolVar(&showVersion, "version", false, "Print version information and exit")
 	flag.Parse()
+
+	if showVersion {
+		fmt.Print(formatVersion(version, commit, buildDate))
+		return
+	}
 
 	config, err := loadConfig(configPath)
 	if err != nil {
@@ -228,7 +245,7 @@ func main() {
 
 	configureSlog(config.Logging.Level, logFilePath)
 
-	slog.Info("Starting SCT Agent", "version", version)
+	slog.Info("sct-agent starting", "version", version, "commit", commit, "build_date", buildDate)
 	slog.Info("Server configuration", "host", config.Server.Host, "port", config.Server.Port)
 	slog.Info("Executor configuration", "max_concurrent_jobs", config.Executor.MaxConcurrentJobs, "default_timeout_seconds", config.Executor.DefaultTimeoutSeconds)
 	slog.Info("Logging configuration", "level", config.Logging.Level)

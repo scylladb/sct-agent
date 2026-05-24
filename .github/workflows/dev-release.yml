@@ -1,0 +1,100 @@
+name: Dev Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      next_version:
+        description: "Target version line, MAJOR.MINOR.PATCH (default: last non-dev tag with patch bumped)."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Compute and validate dev tag
+        id: tag
+        run: |
+          input="${{ inputs.next_version }}"
+          if [ -n "$input" ]; then
+            NEXT="${input#v}"
+          else
+            LAST="$(git describe --tags --abbrev=0 --match='v[0-9]*.[0-9]*.[0-9]*' --exclude='*-dev.*' 2>/dev/null || echo v0.0.0)"
+            IFS=. read -r MAJ MIN PATCH <<< "${LAST#v}"
+            NEXT="${MAJ}.${MIN}.$((PATCH+1))"
+          fi
+          if [[ ! "$NEXT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "next_version must be MAJOR.MINOR.PATCH; got: $NEXT"
+            exit 1
+          fi
+          DEV_TAG="v${NEXT}-dev.$(date -u +%Y%m%d).$(git rev-parse --short HEAD)"
+          echo "DEV_TAG=${DEV_TAG}" >> "$GITHUB_ENV"
+          echo "Computed DEV_TAG=${DEV_TAG}"
+
+      - name: Run full CI suite
+        run: make ci
+
+      - name: Build dev-release binaries
+        run: make build-all VERSION="${DEV_TAG}"
+
+      - name: Smoke-test binary --version
+        run: |
+          out="$(./bin/sct-agent-linux-amd64 --version)"
+          echo "$out"
+          echo "$out" | grep -F "${DEV_TAG}" >/dev/null || {
+            echo "Smoke test failed: ${DEV_TAG} not found in --version output"
+            exit 1
+          }
+
+      - name: Publish GitHub prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.DEV_TAG }}
+          prerelease: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            bin/sct-agent-linux-amd64
+            bin/sct-agent-linux-arm64
+
+  prune-old-dev-releases:
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Delete dev prereleases older than 15 days
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cutoff_iso="$(date -u -d '15 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Pruning dev prereleases created before ${cutoff_iso}"
+          gh release list --limit 1000 \
+              --json tagName,createdAt,isPrerelease \
+            | jq -r --arg cutoff "$cutoff_iso" '
+                .[]
+                | select(.isPrerelease == true)
+                | select(.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\."))
+                | select(.createdAt < $cutoff)
+                | .tagName' \
+            | while read -r tag; do
+                [ -z "$tag" ] && continue
+                echo "Deleting prerelease $tag"
+                gh release delete --cleanup-tag --yes "$tag"
+              done
