@@ -37,7 +37,8 @@ func NewClientWithTLS(baseURL, apiKey, caCertFile string) (*Client, error) {
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 
 	if caCertFile != "" {
-		caCert, err := os.ReadFile(caCertFile)
+		caCert, err := os.ReadFile(caCertFile) //nolint:gosec // G304: caCertFile is caller-supplied
+
 		if err != nil {
 			return nil, fmt.Errorf("failed to read CA certificate file: %w", err)
 		}

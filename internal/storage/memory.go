@@ -7,8 +7,7 @@ import (
 
 // Memory implements the Storage interface using in-memory storage
 type Memory struct {
-	jobs  sync.Map
-	mutex sync.RWMutex
+	jobs sync.Map
 }
 
 func NewMemory() *Memory {
@@ -30,7 +29,7 @@ func (m *Memory) Get(id string) (*Job, bool) {
 func (m *Memory) List(status JobStatus, limit, offset int, since *time.Time) ([]*Job, int, error) {
 	var allJobs []*Job
 
-	m.jobs.Range(func(key, value interface{}) bool {
+	m.jobs.Range(func(_, value interface{}) bool {
 		job := value.(*Job)
 
 		if status != "" && job.Status != status {

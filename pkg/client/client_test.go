@@ -34,7 +34,7 @@ func TestNewClientWithTLS_CACert(t *testing.T) {
 	tlsCert, err := tls.X509KeyPair(serverCertPEM, serverKeyPEM)
 	require.NoError(t, err)
 
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"healthy"}`))
 	}))

@@ -135,7 +135,7 @@ func (e *Executor) executeJob(job *storage.Job) {
 	now := time.Now()
 	job.Status = storage.StatusRunning
 	job.StartedAt = &now
-	e.storage.Save(job)
+	_ = e.storage.Save(job)
 
 	e.logJobStart(job)
 
@@ -147,11 +147,13 @@ func (e *Executor) executeJob(job *storage.Job) {
 
 	e.logJobCompletion(job)
 
-	e.storage.Save(job)
+	_ = e.storage.Save(job)
 }
 
 func (e *Executor) runCommand(ctx context.Context, job *storage.Job) {
-	cmd := exec.CommandContext(ctx, job.Command, job.Args...)
+	// running arbitrary commands is the executor's purpose; callers are
+	// authenticated upstream via API key + TLS.
+	cmd := exec.CommandContext(ctx, job.Command, job.Args...) //nolint:gosec // G204: intentional
 
 	if job.WorkingDir != "" {
 		cmd.Dir = job.WorkingDir
